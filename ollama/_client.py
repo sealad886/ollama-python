@@ -78,78 +78,78 @@ T = TypeVar('T')
 from ._signing import prepare_signed_request
 
 def _parse_host(host: Optional[str]) -> str:
-    if not host:
-        return "http://127.0.0.1:11434"
-    if host.startswith("http://") or host.startswith("https://"):
-        return host
-    if ":" in host and not host.startswith("["):
-        return f"http://{host}"
+  if not host:
+    return "http://127.0.0.1:11434"
+  if host.startswith("http://") or host.startswith("https://"):
+    return host
+  if ":" in host and not host.startswith("["):
     return f"http://{host}"
+  return f"http://{host}"
 
 
 class BaseClient:
-    def __init__(
-        self,
-        client,
-        host: Optional[str] = None,
-        *,
-        follow_redirects: bool = True,
-        timeout: Any = None,
-        headers: Optional[Mapping[str, str]] = None,
-        **kwargs,
-    ) -> None:
-        base_url = _parse_host(host or None)
-        # Save base_url so signing logic can inspect hostname.
-        self._base_url = base_url
+  def __init__(
+      self,
+      client,
+      host: Optional[str] = None,
+      *,
+      follow_redirects: bool = True,
+      timeout: Any = None,
+      headers: Optional[Mapping[str, str]] = None,
+      **kwargs,
+  ) -> None:
+      base_url = _parse_host(host or None)
+      # Save base_url so signing logic can inspect hostname.
+      self._base_url = base_url
 
-        self._client = client(
-            base_url=base_url,
-            follow_redirects=follow_redirects,
-            timeout=timeout,
-            headers={
-                k.lower(): v
-                for k, v in {
-                    **(headers or {}),
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                    "User-Agent": f"ollama-python/{__version__} ({platform.machine()} {platform.system().lower()}) Python/{platform.python_version()}",
-                }.items()
-            },
-            **kwargs,
-        )
+      self._client = client(
+        base_url=base_url,
+        follow_redirects=follow_redirects,
+        timeout=timeout,
+        headers={
+            k.lower(): v
+            for k, v in {
+              **(headers or {}),
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+              "User-Agent": f"ollama-python/{__version__} ({platform.machine()} {platform.system().lower()}) Python/{platform.python_version()}",
+            }.items()
+        },
+        **kwargs,
+      )
 
 
 CONNECTION_ERROR_MESSAGE = "Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible. https://ollama.com/download"
 
 
 class Client(BaseClient):
-    def __init__(self, host: Optional[str] = None, **kwargs) -> None:
-        super().__init__(httpx.Client, host, **kwargs)
+  def __init__(self, host: Optional[str] = None, **kwargs) -> None:
+    super().__init__(httpx.Client, host, **kwargs)
 
-    def _request_raw(self, *args, **kwargs):
-        try:
-            # Extract method and url provided to request
-            method = args[0] if len(args) > 0 else kwargs.get("method")
-            url = args[1] if len(args) > 1 else kwargs.get("url")
+  def _request_raw(self, *args, **kwargs):
+    try:
+      # Extract method and url provided to request
+      method = args[0] if len(args) > 0 else kwargs.get("method")
+      url = args[1] if len(args) > 1 else kwargs.get("url")
 
-            # Intercept relative path requests and prepare signed request when needed
-            if isinstance(url, str) and url.startswith("/"):
-                headers = kwargs.get("headers") or {}
-                path_with_ts, headers = prepare_signed_request(self._base_url, method, url, headers)
-                # update args/kwargs to use the signed path and headers
-                if len(args) > 1:
-                    args = (args[0], path_with_ts) + args[2:]
-                else:
-                    kwargs["url"] = path_with_ts
-                kwargs["headers"] = headers
+      # Intercept relative path requests and prepare signed request when needed
+      if isinstance(url, str) and url.startswith("/"):
+        headers = kwargs.get("headers") or {}
+        path_with_ts, headers = prepare_signed_request(self._base_url, method, url, headers)
+        # update args/kwargs to use the signed path and headers
+        if len(args) > 1:
+          args = (args[0], path_with_ts) + args[2:]
+        else:
+          kwargs["url"] = path_with_ts
+        kwargs["headers"] = headers
 
-            r = self._client.request(*args, **kwargs)
-            r.raise_for_status()
-            return r
-        except httpx.HTTPStatusError as e:
-            raise e  # preserve behavior; adapt to your project's ResponseError wrapper if needed
-        except httpx.ConnectError:
-            raise ConnectionError(CONNECTION_ERROR_MESSAGE) from None
+      r = self._client.request(*args, **kwargs)
+      r.raise_for_status()
+      return r
+    except httpx.HTTPStatusError as e:
+      raise e  # preserve behavior; adapt to your project's ResponseError wrapper if needed
+    except httpx.ConnectError:
+      raise ConnectionError(CONNECTION_ERROR_MESSAGE) from None
 
   @overload
   def _request(
@@ -648,18 +648,36 @@ class Client(BaseClient):
       '/api/ps',
     )
 
-
 class AsyncClient(BaseClient):
   def __init__(self, host: Optional[str] = None, **kwargs) -> None:
+    # pass httpx.AsyncClient constructor as factory for BaseClient
     super().__init__(httpx.AsyncClient, host, **kwargs)
 
   async def _request_raw(self, *args, **kwargs):
+    """
+    Low-level async request wrapper.
+
+    Mirrors the sync Client._request_raw and ensures relative-path signing is applied.
+    """
     try:
+      method = args[0] if len(args) > 0 else kwargs.get("method")
+      url = args[1] if len(args) > 1 else kwargs.get("url")
+
+      # Intercept relative path requests and prepare signed request when needed
+      if isinstance(url, str) and url.startswith("/"):
+        headers = kwargs.get("headers") or {}
+        path_with_ts, headers = prepare_signed_request(self._base_url, method, url, headers)
+        if len(args) > 1:
+          args = (args[0], path_with_ts) + args[2:]
+        else:
+          kwargs["url"] = path_with_ts
+        kwargs["headers"] = headers
+
       r = await self._client.request(*args, **kwargs)
       r.raise_for_status()
       return r
     except httpx.HTTPStatusError as e:
-      raise ResponseError(e.response.text, e.response.status_code) from None
+      raise e
     except httpx.ConnectError:
       raise ConnectionError(CONNECTION_ERROR_MESSAGE) from None
 
