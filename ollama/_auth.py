@@ -28,8 +28,8 @@ def _pack_ssh_string(b: bytes) -> bytes:
 def _ensure_cryptography_available():
     try:
         # Import inside function so module import doesn't require cryptography when signing is unused.
-        from cryptography.hazmat.primitives.asymmetric import ed25519  # noqa: F401
         from cryptography.hazmat.primitives import serialization  # noqa: F401
+        from cryptography.hazmat.primitives.asymmetric import ed25519  # noqa: F401
     except Exception as exc:
         raise ImportError(
             "The 'cryptography' package is required for Ollama signing. "
