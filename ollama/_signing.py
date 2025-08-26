@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 import time
 import urllib.parse
-from typing import Dict, Tuple, Optional
+from typing import Dict, Optional, Tuple
 
 from ._auth import sign_challenge
 
